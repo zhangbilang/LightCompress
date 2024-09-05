@@ -1,5 +1,6 @@
 import functools
 import gc
+import inspect
 import json
 import os
 from collections import defaultdict
@@ -309,15 +310,26 @@ class BaseBlockwiseQuantization(BlockwiseOpt):
             tensor_parallelize_style = (
                 subset['tensor_parallelize_style'] if self.tp > 1 else None
             )
-            self.subset_transform(
-                layers_dict,
-                input_feat,
-                prev_op,
-                input_name,
-                inspect_module,
-                subset_kwargs,
-                tensor_parallelize_style,
-            )
+            signature = inspect.signature(self.subset_transform)
+            if 'tensor_parallelize_style' in signature.parameters:
+                self.subset_transform(
+                    layers_dict,
+                    input_feat,
+                    prev_op,
+                    input_name,
+                    inspect_module,
+                    subset_kwargs,
+                    tensor_parallelize_style,
+                )
+            else:
+                self.subset_transform(
+                    layers_dict,
+                    input_feat,
+                    prev_op,
+                    input_name,
+                    inspect_module,
+                    subset_kwargs,
+                )
         logger.info(f'End transform the {self.block_idx}-th block')
 
     def block_init(self, block):
@@ -488,6 +500,7 @@ class BaseBlockwiseQuantization(BlockwiseOpt):
                     if n in subset['layers']:
                         tensor_parallelize_style = subset['tensor_parallelize_style']
                         break
+            tensor_parallelize_style = self.model.get
             if not check_do_quant(
                 self.block_idx, n, self.mix_bits_map, self.quantizer_mix_bits
             ):
