@@ -125,6 +125,16 @@ class BaseModel(metaclass=ABCMeta):
             if isinstance(m, tuple(_LLMC_LINEAR_TYPES_ + _TRANSFORMERS_LINEAR_TYPES_))
         }
 
+    def get_tensor_parallelize_style(self, block, layer_name, tp=1):
+        tensor_parallelize_style = None
+        subsets = self.get_subsets_in_block(block)
+        if tp > 1:
+            for subset in subsets:
+                if layer_name in subset['layers']:
+                    tensor_parallelize_style = subset['tensor_parallelize_style']
+                    break
+        return tensor_parallelize_style
+
     def set_mix_bits_params_dict(self, block_idx, name, params_dict):
 
         logger.info('set_mix_bits_params_dict')
@@ -186,19 +196,19 @@ class BaseModel(metaclass=ABCMeta):
             params_mix_dict['a_qdq'] = None
         return params_mix_dict
 
-    def replace_module_all(self, module, params_dict):
+    def replace_module_all(self, module, params_dict, tp=1):
         for block_idx in range(len(self.blocks)):
             logger.info(f'Replace block index: {block_idx}/{len(self.blocks)}')
             block = self.blocks[block_idx]
             block = block.cuda()
-            self.replace_module_block(module, block, block_idx, params_dict)
+            self.replace_module_block(module, block, block_idx, params_dict, tp)
             block = block.cpu()
 
         gc.collect()
         torch.cuda.empty_cache()
         logger.info(f'The Replaced model: {self.model}')
 
-    def replace_module_block(self, module, block, block_idx, params_dict):
+    def replace_module_block(self, module, block, block_idx, params_dict, tp=1):
         if module in _LLMC_LN_TYPES_ + _TRANSFORMERS_LN_TYPES_:
             layer_norms = self.get_layernorms_in_block(block)
             self.replace_module_layernorm(
@@ -207,9 +217,19 @@ class BaseModel(metaclass=ABCMeta):
         else:
             subset = {}
             subset['layers'] = self.get_block_linears(block)
-            self.replace_module_subset(module, block, subset, block_idx, params_dict)
+            self.replace_module_subset(
+                module, block, subset, block_idx, params_dict, tp
+            )
 
-    def replace_module_subset(self, module, block, subset, block_idx, params_dict):
+    def replace_module_subset(
+        self,
+        module,
+        block,
+        subset,
+        block_idx,
+        params_dict,
+        tp=1
+    ):
         layers_dict = subset['layers']
 
         for name, m in layers_dict.items():
@@ -221,8 +241,13 @@ class BaseModel(metaclass=ABCMeta):
                 )
             else:
                 params_tmp_dict = params_dict
-
-            M = module.new(m, **params_tmp_dict)
+            tensor_parallelize_style = self.get_tensor_parallelize_style(
+                block, name, tp
+            )
+            M = module.new(
+                m, **params_tmp_dict,
+                tensor_parallelize_style=tensor_parallelize_style
+            )
 
             name_tmp = name.rsplit('.', 1)
             if len(name_tmp) == 2:

@@ -20,7 +20,7 @@ class RTN(BaseBlockwiseQuantization):
     def block_opt(self, *opt_kwargs):
         pass
 
-    def a_qdq(self, act, module, aquantizer):
+    def a_qdq(self, act, module, aquantizer, tensor_parallelize_style=None):
         if self.act_static:
             args = {}
             args['scales'] = (
@@ -37,7 +37,7 @@ class RTN(BaseBlockwiseQuantization):
             )
             return aquantizer.fake_quant_act_static(act, args)
         else:
-            return aquantizer.fake_quant_act_dynamic(act)
+            return aquantizer.fake_quant_act_dynamic(act, tensor_parallelize_style)
 
     def get_act_qparams(self, layers_dict, act_tensors):
         avg_min_val, avg_max_val = None, None
