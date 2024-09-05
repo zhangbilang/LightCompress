@@ -29,20 +29,22 @@ class BaseBlockwiseQuantization(BlockwiseOpt):
         super().__init__(model, quant_config, input, config)
         self.set_quant_config()
 
-    def w_qdq(self, module, wquantizer):
+    def w_qdq(self, module, wquantizer, tensor_parallelize_style=None):
         args = {'lowbound_factor': None, 'upbound_factor': None}
         if hasattr(module, 'buf_lowbound_factor'):
             args['lowbound_factor'] = module.buf_lowbound_factor
         if hasattr(module, 'buf_upbound_factor'):
             args['upbound_factor'] = module.buf_upbound_factor
 
-        return wquantizer.fake_quant_weight_dynamic(module.weight, args)
+        return wquantizer.fake_quant_weight_dynamic(
+            module.weight, tensor_parallelize_style, args
+        )
 
     def w_q(self, module, wquantizer):
         return wquantizer.real_quant_weight_dynamic(module.weight.data)
 
-    def a_qdq(self, act, module, aquantizer):
-        return aquantizer.fake_quant_act_dynamic(act)
+    def a_qdq(self, act, module, aquantizer, tensor_parallelize_style=None):
+        return aquantizer.fake_quant_act_dynamic(act, tensor_parallelize_style)
 
     def logit(self, x):
         return torch.log(x / (1 - x))
@@ -493,14 +495,9 @@ class BaseBlockwiseQuantization(BlockwiseOpt):
     def auto_clip(self, block, input_feat, n_sample_token):
         # auto clip
         for n, m in block.named_modules():
-            subsets = self.model.get_subsets_in_block(block)
-            tensor_parallelize_style = None
-            if self.tp > 1:
-                for subset in subsets:
-                    if n in subset['layers']:
-                        tensor_parallelize_style = subset['tensor_parallelize_style']
-                        break
-            tensor_parallelize_style = self.model.get
+            tensor_parallelize_style = self.model.get_tensor_parallelize_style(
+                block, n, tp=self.tp
+            )
             if not check_do_quant(
                 self.block_idx, n, self.mix_bits_map, self.quantizer_mix_bits
             ):
@@ -901,7 +898,8 @@ class BaseBlockwiseQuantization(BlockwiseOpt):
         self.model.replace_module_all(
             module,
             self.get_replacement_params(mode=quant_format, w_only=self.w_only),
-            keep_device=keep_device
+            keep_device=keep_device,
+            tp=self.tp
         )
 
         logger.info(f'-- deploy_{quant_format}_model done --')
