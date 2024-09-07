@@ -382,6 +382,10 @@ class FakeQuantLinear(nn.Module):
             if name.startswith('buf_'):
                 self.register_buffer(name, buf.data)
 
+        for name, buf in ori_module.named_parameters():
+            if name.startswith('buf_'):
+                self.register_buffer(name, buf.data)
+
         if hasattr(self, 'buf_rotate') and self.buf_rotate:
             self.rotater = ori_module.rotater
         else:
@@ -482,14 +486,15 @@ class EffcientFakeQuantLinear(nn.Module):
 
     @classmethod
     @torch.no_grad()
-    def new(cls, module, w_qdq, a_qdq, debug_print={}):
-        weight = w_qdq(module)
+    def new(cls, module, w_qdq, a_qdq, debug_print={}, tensor_parallelize_style=None):
+        weight = w_qdq(module, tensor_parallelize_style=tensor_parallelize_style)
 
         if module.bias is not None:
             bias = module.bias.data
         else:
             bias = None
-
+        if tensor_parallelize_style is not None and callable(a_qdq):
+            a_qdq = partial(a_qdq, tensor_parallelize_style=tensor_parallelize_style)
         new_module = cls(weight, bias, ori_module=module, a_qdq=a_qdq)
 
         new_module.in_features = module.in_features
