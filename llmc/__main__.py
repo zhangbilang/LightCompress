@@ -17,7 +17,7 @@ from llmc.data import BaseDataset, BaseTokenizer
 from llmc.eval import PerplexityEval, TokenConsistencyEval
 from llmc.models import *
 from llmc.utils import (check_config, mkdirs, print_important_package_version,
-                        seed_all)
+                        seed_all, update_vllm_quant_config)
 from llmc.utils.registry_factory import ALGO_REGISTRY, MODEL_REGISTRY
 
 
@@ -114,6 +114,11 @@ def main(config):
         blockwise_opt.deploy('real_quant')
         blockwise_opt.save_model(save_quant_path)
 
+    if 'save' in config and config.save.get('save_vllm', False):
+        blockwise_opt.deploy('real_quant')
+        blockwise_opt.save_model(save_quant_path)
+        update_vllm_quant_config(blockwise_opt.model, config, save_quant_path)
+
     if 'opencompass' in config:
         assert config.save.get('save_trans', False)
         cfg_path = config['opencompass']['cfg_path']
@@ -174,6 +179,9 @@ if __name__ == '__main__':
             )
             mkdirs(save_trtllm_engine_path)
         if config.save.get('save_lightllm', False):
+            save_quant_path = os.path.join(config.save.save_path, 'real_quant_model')
+            mkdirs(save_quant_path)
+        if config.save.get('save_vllm', False):
             save_quant_path = os.path.join(config.save.save_path, 'real_quant_model')
             mkdirs(save_quant_path)
         if config.save.get('save_fake', False):
