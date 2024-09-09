@@ -1,4 +1,5 @@
 import gc
+import inspect
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from functools import partial
@@ -251,10 +252,15 @@ class BaseModel(metaclass=ABCMeta):
             tensor_parallelize_style = self.get_tensor_parallelize_style(
                 block, name, tp
             )
-            M = module.new(
-                m, **params_tmp_dict,
-                tensor_parallelize_style=tensor_parallelize_style
-            )
+            signature = inspect.signature(module.new)
+            if 'tensor_parallelize_style' in signature.parameters:
+                M = module.new(
+                    m, **params_tmp_dict,
+                    tensor_parallelize_style=tensor_parallelize_style
+                )
+            else:
+                assert tensor_parallelize_style is None, f'{module} not support TP'
+                M = module.new(m, **params_tmp_dict)
 
             name_tmp = name.rsplit('.', 1)
             if len(name_tmp) == 2:
