@@ -15,8 +15,8 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from llmc.compression.quantization.module_utils import (
     _LLMC_LINEAR_TYPES_, _LLMC_LN_TYPES_, _TRANSFORMERS_LINEAR_TYPES_,
-    _TRANSFORMERS_LN_TYPES_, AutoawqQuantLinearInt4, LlmcFp8Linear,
-    VllmQuantLinearFp8, VllmQuantLinearInt8)
+    _TRANSFORMERS_LN_TYPES_, LlmcFp8Linear, VllmQuantLinearFp8,
+    VllmQuantLinearInt8)
 
 
 class BaseModel(metaclass=ABCMeta):
@@ -27,7 +27,7 @@ class BaseModel(metaclass=ABCMeta):
         self.tokenizer_mode = self.config.model.get('tokenizer_mode', 'fast')
         self.use_cpu_to_save_cuda_mem_for_catcher = self.config.model.get('use_cpu_to_save_cuda_mem_for_catcher', False) # noqa
         torch_dtype = self.config.model.torch_dtype
-        self.torch_dtype = torch_dtype if torch_dtype in ['auto', 'int4'] else eval(torch_dtype)
+        self.torch_dtype = torch_dtype if torch_dtype in ['auto'] else eval(torch_dtype)
         self.block_wise_quant = self.config.model.get('block_wise_quant', False)
         if self.block_wise_quant:
             assert self.torch_dtype == torch.float8_e4m3fn
@@ -202,7 +202,7 @@ class BaseModel(metaclass=ABCMeta):
             if hasattr(self.model_config, 'use_cache'):
                 self.model_config.use_cache = False
         logger.info(f'self.model_config : {self.model_config}')
-        if self.torch_dtype in [torch.float8_e4m3fn, torch.int8, 'int4']:
+        if self.torch_dtype in [torch.float8_e4m3fn, torch.int8]:
             with init_empty_weights():
                 self.model = AutoModelForCausalLM.from_config(config=self.model_config,
                                                               torch_dtype=torch.float16,
@@ -220,9 +220,6 @@ class BaseModel(metaclass=ABCMeta):
             elif self.torch_dtype == torch.int8:
                 params_dict = {}
                 quant_linear_cls = VllmQuantLinearInt8
-            elif self.torch_dtype == 'int4':
-                params_dict = {}
-                quant_linear_cls = AutoawqQuantLinearInt4
 
             for block_idx, block in enumerate(self.blocks):
                 self.replace_module_block(quant_linear_cls,
